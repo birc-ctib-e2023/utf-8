@@ -2,8 +2,6 @@
 Encode a string as UTF-8 and write it in hex.
 """
 
-import argparse
-
 
 def code_points(x: str) -> list[int]:
     """
@@ -113,17 +111,3 @@ def encode_codepoint_seq(codepoints: list[int]) -> list[int]:
     for cp in codepoints:
         enc.extend(encode_codepoint(cp))
     return enc
-
-
-def main() -> None:
-    """Encode an argument string."""
-    argparser = argparse.ArgumentParser(description="Encode a string as UTF-8")
-    argparser.add_argument("string", type=str)
-    args = argparser.parse_args()
-    cps = code_points(args.string)
-    enc = encode_codepoint_seq(cps)
-    print(''.join(f"{cp:0>2x}" for cp in enc))
-
-
-if __name__ == '__main__':
-    main()

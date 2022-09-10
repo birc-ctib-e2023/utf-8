@@ -1,8 +1,7 @@
 """
 Decodes a string in UTF-8 (but encoded in hex).
 """
-
-import argparse
+from __future__ import annotations
 
 
 def get_bytes(x: str) -> list[int]:
@@ -22,13 +21,14 @@ def code_class(byte: int) -> int:
     >>> code_class(226)
     2
     """
-    if byte >> 7 == 0b0:
+    b = bits(byte)
+    if b[7:] == 0b0:
         return 0
-    if byte >> 5 == 0b110:
+    if b[5:] == 0b110:
         return 1
-    if byte >> 4 == 0b1110:
+    if b[4:] == 0b1110:
         return 2
-    if byte >> 3 == 0b11110:
+    if b[3:] == 0b11110:
         return 3
     assert False, "Shouldn't happen"
 
@@ -81,14 +81,69 @@ def decode(seq: list[int]) -> list[int]:
     return res
 
 
-def main() -> None:
-    """Decode an argument string."""
-    argparser = argparse.ArgumentParser(description="Encode a string as UTF-8")
-    argparser.add_argument("string", type=str)
-    args = argparser.parse_args()
-    seq = get_bytes(args.string)
-    print("".join(chr(i) for i in decode(seq)))
+class bits:
+    """Wrap an integer to give us easier access to bits."""
 
+    _x: int
 
-if __name__ == '__main__':
-    main()
+    def __init__(self, x: int) -> None:
+        """Create a wrapper."""
+        self._x = x
+
+    def __getitem__(self, idx: int | slice) -> int:
+        """
+        Extract specific bits.
+
+        Indexing with a single integer, like x[i], gives you the bit
+        at index i, and indexing with a slice, like x[i:j], gives you
+        bits from i up to (but not including) j.
+
+        >>> x = bits(0b110011)
+        >>> bin(x[0])
+        '0b1'
+        >>> bin(x[2])
+        '0b0'
+        >>> bin(x[1:5])
+        '0b1001'
+        """
+        match idx:
+            case slice(start=i, stop=j):
+                i = i if i is not None else 0
+                mask = (1 << j) - 1 if j is not None else ~0
+                return (self._x & mask) >> i
+            case i:
+                return (self._x >> i) & 1
+
+    def __setitem__(self, idx: int | slice, val: int) -> bits:
+        """
+        Set specific bits.
+
+        Indexing with a single integer, like x[i], gives you the bit
+        at index i, and indexing with a slice, like x[i:j], gives you
+        bits from i up to (but not including) j.
+
+        >>> x = bits(0)
+        >>> x[:3] = 0b101
+        >>> x
+        bits(0b101)
+        >>> x[3:6] = 0b111
+        >>> x
+        bits(0b111101)
+        """
+        match idx:
+            case slice(start=i, stop=j):
+                i = i if i is not None else 0
+                j = j if j is not None else self._x.bit_length() + 1
+                assert val.bit_length() <= j - i, "Value has too many bits."
+                clear_mask = ~(((1 << j) - 1) ^ ((1 << i) - 1))
+                self._x &= clear_mask  # clear the current bits
+                self._x |= (val << i)  # and set the new ones
+        return self
+
+    def __str__(self) -> str:
+        """Give textual representation."""
+        return f"{bin(self._x)}"
+
+    def __repr__(self) -> str:
+        """Give textual representation."""
+        return f"bits({bin(self._x)})"
