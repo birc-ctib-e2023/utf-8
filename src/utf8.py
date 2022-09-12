@@ -115,7 +115,7 @@ def code_points(x: str) -> list[int]:
     >>> code_points("🎃🥳🤪")
     [127875, 129395, 129322]
     """
-    return [ord(c) for c in x]
+    ...
 
 
 def encode_codepoint(codepoint: int) -> str:
@@ -135,26 +135,7 @@ def encode_codepoint(codepoint: int) -> str:
     >>> encode_codepoint(ord("🎃"))
     'f09f8e83'
     """
-    no_bits = codepoint.bit_length()
-    cp_bits = bits(codepoint)
-    bytes = []
-
-    if no_bits <= 7:
-        bytes.append(codepoint)
-    elif no_bits <= 11:
-        bytes.append(cp_bits[6:11].mask(0b110))
-        bytes.append(cp_bits[:6].mask(0b10))
-    elif no_bits <= 16:
-        bytes.append(cp_bits[12:16].mask(0b1110))
-        bytes.append(cp_bits[6:12].mask(0b10))
-        bytes.append(cp_bits[:6].mask(0b10))
-    else:
-        bytes.append(cp_bits[18:].mask(0b11110))
-        bytes.append(cp_bits[12:18].mask(0b10))
-        bytes.append(cp_bits[6:12].mask(0b10))
-        bytes.append(cp_bits[:6].mask(0b10))
-
-    return "".join(f"{int(b):>2x}" for b in bytes)
+    ...
 
 
 def encode(x: str) -> str:
@@ -181,43 +162,14 @@ def get_bytes(x: str) -> list[int]:
     >>> get_bytes('E282AC')
     [226, 130, 172]
     """
-    return [int(x[i:i+2], base=16) for i in range(0, len(x), 2)]
+    ...
 
 
 def decode_bytes(x: list[int]) -> list[int]:
     """
     Translate a UTF-8 encoded sequence into a list of code points.
     """
-    itr = iter(x)
-    res = []
-    try:
-        while True:
-            code_point = bits(0)
-
-            byte = bits(next(itr))
-            if byte[7] == 0:
-                code_point[:] = byte[:]
-            elif byte[5:] == 0b110:
-                code_point[6:] = byte[:5]
-                code_point[:6] = bits(next(itr))[:6]
-            elif byte[4:] == 0b1110:
-                code_point[12:] = byte[:4]
-                code_point[6:12] = bits(next(itr))[:6]
-                code_point[:6] = bits(next(itr))[:6]
-            elif byte[3:] == 0b11110:
-                code_point[18:] = byte[:3]
-                code_point[12:18] = bits(next(itr))[:6]
-                code_point[6:12] = bits(next(itr))[:6]
-                code_point[:6] = bits(next(itr))[:6]
-            else:
-                raise ValueError(f"Illegal opcode byte {repr(byte)}")
-
-            res.append(int(code_point))
-
-    except StopIteration:
-        pass  # We are done
-
-    return res
+    ...
 
 
 def decode(x: str) -> str:
