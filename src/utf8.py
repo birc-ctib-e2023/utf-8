@@ -15,7 +15,7 @@ class bits:
         """Create a wrapper."""
         self._x = x
 
-    def __getitem__(self, idx: int | slice) -> int:
+    def __getitem__(self, idx: int | slice) -> bits:
         """
         Extract specific bits.
 
@@ -24,22 +24,22 @@ class bits:
         bits from i up to (but not including) j.
 
         >>> x = bits(0b110011)
-        >>> bin(x[0])
-        '0b1'
-        >>> bin(x[2])
-        '0b0'
-        >>> bin(x[1:5])
-        '0b1001'
+        >>> x[0]
+        bits(0b1)
+        >>> x[2]
+        bits(0b0)
+        >>> x[1:5]
+        bits(0b1001)
         """
         match idx:
             case slice(start=i, stop=j):
                 i = i if i is not None else 0
                 mask = (1 << j) - 1 if j is not None else ~0
-                return (self._x & mask) >> i
+                return bits((self._x & mask) >> i)
             case i:
-                return (self._x >> i) & 1
+                return bits((self._x >> i) & 1)
 
-    def __setitem__(self, idx: int | slice, val: int) -> bits:
+    def __setitem__(self, idx: int | slice, val: int | bits) -> bits:
         """
         Set specific bits.
 
@@ -55,6 +55,7 @@ class bits:
         >>> x
         bits(0b111101)
         """
+        val = val._x if isinstance(val, bits) else val
         match idx:
             case slice(start=i, stop=j):
                 i = i if i is not None else 0
@@ -78,6 +79,23 @@ class bits:
         """Translate the bits back to an integer."""
         return self._x
 
+    def __eq__(self, other: bits | int) -> bool:
+        """Compare with another bits or an int."""
+        other = other._x if isinstance(other, bits) else other
+        return self._x == other
+
+    def mask(self, mask: int) -> bits:
+        """
+        Add mask to the top mask.bit_length() bits.
+
+        This method assumes that self is a single byte.
+
+        >>> bits(0b00001111).mask(0b11)
+        bits(0b11001111)
+        """
+        self._x |= mask << (8 - mask.bit_length())
+        return self
+
 
 # Encoding
 
@@ -100,109 +118,57 @@ def code_points(x: str) -> list[int]:
     return [ord(c) for c in x]
 
 
-def code_class(codepoint: int) -> int:
+def encode_codepoint(codepoint: int) -> str:
     """
-    Return the encoding class (number of bytes) for a code point.
-
-    >>> [code_class(cp) for cp in code_points("hello, world!")]
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-
-    >>> [code_class(cp) for cp in code_points("hej Skåne!")]
-    [0, 0, 0, 0, 0, 0, 1, 0, 0, 0]
-
-    >>> [code_class(cp) for cp in code_points("Здравей свят")]
-    [1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1]
-
-    >>> [code_class(cp) for cp in code_points("你好, 世界")]
-    [2, 2, 0, 0, 2, 2]
-
-    """
-    bits = codepoint.bit_length()
-    return \
-        0 if bits <= 7 else \
-        1 if bits <= 11 else \
-        2 if bits <= 16 else \
-        3
-
-
-# Bit masks
-MASK_10 = 0b10000000
-MASK_110 = 0b11000000
-MASK_1110 = 0b11100000
-MASK_11110 = 0b11110000
-
-# Table of masks and bits
-ENCODE_TABLE = [
-    ((0, 0, 8), ),  # Class 0, no mask and just the low seven bits
-    ((MASK_110, 6, 11), (MASK_10, 0, 6)),
-    ((MASK_1110, 12, 16), (MASK_10, 6, 12), (MASK_10, 0, 6)),
-    ((MASK_11110, 18, 21), (MASK_10, 12, 18), (MASK_10, 6, 12), (MASK_10, 0, 6))
-]
-
-
-def extract_bits(x: int, i: int, j: int) -> int:
-    """
-    Get bits from index i to j in word x.
-
-    >>> extract_bits(0b10101100, 0, 0)
-    0
-    >>> extract_bits(0b10101100, 2, 5)
-    3
-    >>> extract_bits(0b10101100, 4, 8)
-    10
-
-    """
-    x &= (1 << j) - 1  # Mask out the low j
-    return x >> i      # and shift away the low i
-
-
-def encode_codepoint(codepoint: int) -> list[int]:
-    """
-    Encode a code point as one to four bytes.
+    Encode a code point as one to four bytes, representing them in
+    hex with two digits per byte.
 
     >>> encode_codepoint(ord('h'))
-    [104]
+    '68'
 
     >>> encode_codepoint(ord('в'))
-    [208, 178]
+    'd0b2'
 
     >>> encode_codepoint(ord('世'))
-    [228, 184, 150]
+    'e4b896'
+
+    >>> encode_codepoint(ord("🎃"))
+    'f09f8e83'
     """
-    return [
-        mask | extract_bits(codepoint, i, j)
-        for mask, i, j in ENCODE_TABLE[code_class(codepoint)]
-    ]
+    no_bits = codepoint.bit_length()
+    cp_bits = bits(codepoint)
+    bytes = []
 
+    if no_bits <= 7:
+        bytes.append(codepoint)
+    elif no_bits <= 11:
+        bytes.append(cp_bits[6:11].mask(0b110))
+        bytes.append(cp_bits[:6].mask(0b10))
+    elif no_bits <= 16:
+        bytes.append(cp_bits[12:16].mask(0b1110))
+        bytes.append(cp_bits[6:12].mask(0b10))
+        bytes.append(cp_bits[:6].mask(0b10))
+    else:
+        bytes.append(cp_bits[18:].mask(0b11110))
+        bytes.append(cp_bits[12:18].mask(0b10))
+        bytes.append(cp_bits[6:12].mask(0b10))
+        bytes.append(cp_bits[:6].mask(0b10))
 
-def encode_codepoint_seq(codepoints: list[int]) -> list[int]:
-    """
-    Encode all code points in a list
-
-    >>> encode_codepoint_seq([ord('h')])
-    [104]
-
-    >>> encode_codepoint_seq([ord('в')])
-    [208, 178]
-
-    >>> encode_codepoint_seq([ord('世')])
-    [228, 184, 150]
-    """
-    enc = []
-    for cp in codepoints:
-        enc.extend(encode_codepoint(cp))
-    return enc
+    return "".join(f"{int(b):>2x}" for b in bytes)
 
 
 def encode(x: str) -> str:
     """
     Encode a string as UTF-8 (written in hex).
 
-    >>> encode('€')
-    'e282ac'
+    >>> encode('15€')
+    '3135e282ac'
+
+    >>> encode('你好, 世界')
+    'e4bda0e5a5bd2c20e4b896e7958c'
     """
     return ''.join(
-        f"{cp:>2x}" for cp in encode_codepoint_seq(code_points(x))
+        encode_codepoint(cp) for cp in code_points(x)
     )
 
 
@@ -244,7 +210,7 @@ def decode_bytes(x: list[int]) -> list[int]:
                 code_point[6:12] = bits(next(itr))[:6]
                 code_point[:6] = bits(next(itr))[:6]
             else:
-                raise ValueError(f"Illegal opcode byte {byte}")
+                raise ValueError(f"Illegal opcode byte {repr(byte)}")
 
             res.append(int(code_point))
 
@@ -257,6 +223,12 @@ def decode_bytes(x: list[int]) -> list[int]:
 def decode(x: str) -> str:
     """
     Translate a UTF-8 encoded sequence into a list of code points.
+
+    >>> decode('3135e282ac')
+    '15€'
+
+    >>> decode('e4bda0e5a5bd2c20e4b896e7958c')
+    '你好, 世界'
     """
     return ''.join(
         chr(cp) for cp in decode_bytes(get_bytes(x))
